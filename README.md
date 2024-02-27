@@ -6,6 +6,7 @@ R=3.6.1
 cowplot
 data.table
 default
+deSolve
 dplyr
 ggplot2
 groHMM
