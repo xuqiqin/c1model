@@ -25,5 +25,7 @@ tstable	35
 vini	1
 pfree	250
 thres	225
-ncores	20
+ncores	15
+ncell	100
+tspanSto	1
 ##################################

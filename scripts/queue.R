@@ -49,7 +49,7 @@ ReSingleCell <- function(pfree, thres, moveTrack){
   
   # initialize pool, loadn
   pfreeIni <- pfree
-  loadn <- preLoadPol2[length(preLoadPol2)]
+  loadn <- NULL
   poolList <- c()
   loadList <- c()
   dropList <- c()
@@ -65,29 +65,26 @@ ReSingleCell <- function(pfree, thres, moveTrack){
     pol2t$pos <- newPos
     pol2t$nDrop <- newDrop
     
-    # update pool
-    dropn <- sum(pol2t$nDrop)
+    # generate new Pol II according to pool size and update pool
     loadn <- case_when(
       pfree>pfreeIni ~ vini * tspan * pfree/pfreeIni,
       pfree<=pfreeIni & pfree>=thres ~ vini * tspan,
       pfree<thres ~ vini * tspan * pfree/thres
     )
-    
-    pfree <- pfree - round(loadn,5) + phoTrans(t) * round(dropn,5)
-    poolList <- c(poolList, pfree)
-    loadList <- c(loadList, loadn)
-    dropList <- c(dropList, dropn)
-    
-    # generate new Pol II according to pool size
     newdf <- data.frame(n = nPol2+1,
                         nPol2 = loadn,
                         pos = 0,
                         ti = t,
                         nDrop = 0)
-    
     nPol2 <- nPol2 + 1
     pol2t <- rbind(pol2t, newdf)
     combinedf <- rbind(combinedf, data.frame(pol2t, t = t))
+    
+    dropn <- sum(pol2t$nDrop)
+    pfree <- pfree - round(loadn,5) + phoTrans(t) * round(dropn,5)
+    poolList <- c(poolList, pfree)
+    loadList <- c(loadList, loadn)
+    dropList <- c(dropList, dropn)
     
     # remove dissotiated Pol II
     pol2t <- pol2t[pol2t$pos<maxl, ]

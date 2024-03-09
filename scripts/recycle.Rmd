@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, results = "hold")
 ```
 
 
@@ -19,11 +19,14 @@ library(dplyr)
 library(cowplot)
 library(pbmcapply)
 library(default)
+library(gganimate)
+library(weights)
 
 rm(list = ls())
 source('meta.R')
 source('events.R')
 source('queue.R')
+source('movie.R')
 ```
 
 ### Inputs
@@ -100,3 +103,60 @@ ggplot(ReDf, aes(x = t, y = RF))+
         axis.ticks = element_line(color = "black"))
 ```
 
+### Create movie
+It takes about 2 hours to generate a movie from -30 to 185 min with 100 cells using 15 cores.
+```{r calcMovie, fig.height=3, fig.width=8, cache=TRUE}
+viniSto = vini * 10
+pfreeSto = viniSto * pfree
+thresSto = viniSto * thres
+
+print('Generating cells ...')
+plotdfCell <- pbmcapply::pbmclapply(1:ncell, function(i){
+  singleCell(aseed = i*55555)
+}, mc.cores=ncores)
+
+combineCell <- lapply(plotdfCell, function(x){x[[1]]}) %>%
+  rbindlist() %>%
+  split(., .$t) %>%
+  mclapply(., countPol2)
+
+combineTrack <- do.call(rbind, combineCell) %>% as.data.frame()
+combineTrack$t <- as.numeric(rownames(combineTrack))
+plotTrack <- reshape2::melt(combineTrack, id.vars = "t", variable.name = "pos", value.name = "y")
+plotTrack$pos <- as.numeric(levels(plotTrack$pos))[plotTrack$pos]
+plotTrack$t <- as.numeric(plotTrack$t)
+
+print('Generating mean effective pool size ...')
+plotRe <- lapply(plotdfCell, function(x){x[[2]]}) %>%
+  rbindlist() %>%
+  group_by(t) %>%
+  summarise(pool = mean(pool), loadn=mean(loadn), dropn=mean(dropn), vini=mean(vini)) %>%
+  as.data.frame()
+plotRe$poolNorm <- plotRe$pool / pfreeSto
+plotRe$pos <- 45
+plotRe$y <- 2
+
+print('Combine movement and track ...')
+plotdf <- plotdfCell[[1]][[1]] # pick a cell for visulization
+```
+
+```{r showMovie}
+anim <- ggplot(plotdf, aes(x = pos, y = y)) +
+  geom_point(size = 1.5, aes(color = upho)) +
+  geom_point(data = plotRe, aes(size = poolNorm), fill = "white", shape = 21, show.legend = F) +
+  annotate("text", x = 45, y = 3, label = "effective Pol II pool") +
+  geom_line(data = plotTrack) +
+  labs(color = "pSer2 per Pol II") +
+  scale_color_viridis_c(option = "magma", end = 0.9, limits=c(1,2.25)) +
+  scale_size(range = c(20*min(plotRe$poolNorm), 20)  )+
+  scale_x_continuous(breaks = c(0, 35, maxl), limits = c(0,maxl), labels = c("TSS","TES","TES+15kb")) +
+  scale_y_continuous(limits = c(-1, 4)) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black"),
+        axis.line = element_line(color = "black")) +
+  transition_time(t) +
+  labs(title = "time: {round(frame_time, 1)} min", x = NULL, y = "pSer2 state signals") +
+  ease_aes('linear')
+animate(anim, nframes = length(unique(plotdf$t)), height = 3, width = 8, units = "in", res = 300)
+anim_save("../results/model.movie.gif")
+```

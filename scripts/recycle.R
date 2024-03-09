@@ -6,17 +6,19 @@ library(dplyr)
 library(cowplot)
 library(pbmcapply)
 library(default)
+library(gganimate)
+library(weights)
 
 rm(list = ls())
 source('meta.R')
 source('events.R')
 source('queue.R')
-
+source('movie.R')
 #########################################################
-# inputdir <- '../data/C1D.matrix.gz'
-# configdir <- '../data/config.txt'
-# spikeinList <- c(19163158, 17625265, 17986917, 18285376, 20451950, 24631397)
-# outputdir <- '../results'
+inputdir <- '../data/C1D.matrix.gz'
+configdir <- '../data/config.txt'
+spikeinList <- c(19163158, 17625265, 17986917, 18285376, 20451950, 24631397)
+outputdir <- '../results'
 #########################################################
 
 config <- read.delim(configdir, header = F, stringsAsFactors = F, comment.char = "#")
@@ -50,7 +52,6 @@ moveTrack <- pbmclapply(seq(t0, tmax, tspan), function(ti){
 rownames(moveTrack) <- as.character(round(seq(t0, tmax, tspan), 10))
 colnames(moveTrack) <- as.character(round(seq(0, ceiling(moveSlowest), tspan), 10))
 
-
 # recycle
 ReRes <- ReSingleCell(pfree = pfree, thres = thres, moveTrack = moveTrack)
 
@@ -75,3 +76,55 @@ p2
 ggsave(filename = paste0(outputdir,"/model.recycle.pdf"), plot = p2, width = 5, height = 3)
 
 
+### stocastic process
+viniSto = vini * 10
+pfreeSto = viniSto * pfree
+thresSto = viniSto * thres
+
+message('Generating cells ...')
+plotdfCell <- pbmcapply::pbmclapply(1:ncell, function(i){
+  singleCell(aseed = i*55555)
+}, mc.cores=ncores)
+
+combineCell <- lapply(plotdfCell, function(x){x[[1]]}) %>%
+  rbindlist() %>%
+  split(., .$t) %>%
+  mclapply(., countPol2)
+
+combineTrack <- do.call(rbind, combineCell) %>% as.data.frame()
+combineTrack$t <- as.numeric(rownames(combineTrack))
+plotTrack <- reshape2::melt(combineTrack, id.vars = "t", variable.name = "pos", value.name = "y")
+plotTrack$pos <- as.numeric(levels(plotTrack$pos))[plotTrack$pos]
+plotTrack$t <- as.numeric(plotTrack$t)
+
+message('Generating mean effective pool size ...')
+plotRe <- lapply(plotdfCell, function(x){x[[2]]}) %>%
+  rbindlist() %>%
+  group_by(t) %>%
+  summarise(pool = mean(pool), loadn=mean(loadn), dropn=mean(dropn), vini=mean(vini)) %>%
+  as.data.frame()
+plotRe$poolNorm <- plotRe$pool / pfreeSto
+plotRe$pos <- 45
+plotRe$y <- 2
+
+message('Combine movement and track ...')
+plotdf <- plotdfCell[[1]][[1]] # pick a cell for visulization
+
+anim <- ggplot(plotdf, aes(x = pos, y = y)) +
+  geom_point(size = 1.5, aes(color = upho)) +
+  geom_point(data = plotRe, aes(size = poolNorm), fill = "white", shape = 21, show.legend = F) +
+  annotate("text", x = 45, y = 3, label = "effective Pol II pool") +
+  geom_line(data = plotTrack) +
+  labs(color = "pSer2 per Pol II") +
+  scale_color_viridis_c(option = "magma", end = 0.9, limits=c(1,2.25)) +
+  scale_size(range = c(20*min(plotRe$poolNorm), 20)  )+
+  scale_x_continuous(breaks = c(0, 35, maxl), limits = c(0,maxl), labels = c("TSS","TES","TES+15kb")) +
+  scale_y_continuous(limits = c(-1, 4)) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black"),
+        axis.line = element_line(color = "black")) +
+  transition_time(t) +
+  labs(title = "time: {round(frame_time, 1)} min", x = NULL, y = "pSer2 state signals") +
+  ease_aes('linear')
+animate(anim, nframes = length(unique(plotdf$t)), height = 3, width = 8, units = "in", res = 300)
+anim_save("../results/model.movie.gif")
