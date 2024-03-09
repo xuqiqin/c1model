@@ -20,4 +20,4 @@ weights
 - a matrix computed by deepTools for pSer2 ChIP-Seq after CTDP1 degradation ```data/C1D.matrix.gz```
 - a configuration file in ```data/config.txt```
 ### Usage
-To reproduce the figure in the paper, follow the instructions in ```scripts/recycle.html```
+To reproduce the figure in the paper, follow the instructions in ```scripts/recycle.html``` or ```scripts/recycle.Rmd```
