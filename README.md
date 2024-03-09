@@ -9,9 +9,11 @@ default
 deSolve
 dplyr
 ggplot2
+gganimate
 groHMM
 pbmcapply
 rjson
+weights
 ```
 ## Description
 ### Input
